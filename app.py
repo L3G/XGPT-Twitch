@@ -96,7 +96,7 @@ def answer():
     try:
         # 1st Call: Let GPT-4o-mini decide if it needs to browse the internet
         response = openai.chat.completions.create(
-            model="gpt-4o-mini-2024-07-18",  # GPT-4o-mini model
+            model="gpt-4o-mini",  # GPT-4o-mini model
             messages=messages,
             tools=tools,
             tool_choice="auto",
@@ -125,7 +125,7 @@ def answer():
                     })
                     # 2nd Call: GPT-4o-mini sees the search results and composes final
                     final_response = openai.chat.completions.create(
-                        model="gpt-4o-mini-2024-07-18",
+                        model="gpt-4o-mini",
                         messages=messages,
                         parallel_tool_calls=False,
                         max_tokens=100,
