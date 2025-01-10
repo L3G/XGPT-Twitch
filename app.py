@@ -127,6 +127,7 @@ def answer():
                     final_response = openai.chat.completions.create(
                         model="gpt-4o-mini-2024-07-18",
                         messages=messages,
+                        parallel_tool_calls=False,
                         max_tokens=100,
                         temperature=0.7
                     )
