@@ -16,8 +16,7 @@ GOOGLE_API_KEY = "AIzaSyDEpAVpDeJ4nHcEk8nkqN3MHpahM0VDcn4"
 GOOGLE_SEARCH_CX = "3099754d9b7fb4d0f"
 
 # OpenAI API key (best to store in an environment variable as well)
-#openai.api_key = os.getenv("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY")
-openai.api_key = "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"
+openai.api_key = os.getenv("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY")
 
 ##################################################
 # 2) Actual browse_internet function using Google
