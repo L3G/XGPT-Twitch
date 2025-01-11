@@ -16,7 +16,8 @@ GOOGLE_API_KEY = "AIzaSyDEpAVpDeJ4nHcEk8nkqN3MHpahM0VDcn4"
 GOOGLE_SEARCH_CX = "3099754d9b7fb4d0f"
 
 # OpenAI API key (best to store in an environment variable as well)
-openai.api_key = os.getenv("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY")
+#openai.api_key = os.getenv("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY")
+openai.api_key = "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"
 
 ##################################################
 # 2) Actual browse_internet function using Google
@@ -127,7 +128,6 @@ def answer():
                     final_response = openai.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=messages,
-                        parallel_tool_calls=False,
                         max_tokens=100,
                         temperature=0.7
                     )
