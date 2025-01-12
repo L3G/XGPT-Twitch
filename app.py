@@ -14,7 +14,7 @@ CONVERSATION_HISTORY = []
 ##################################################
 # 1) Set credentials
 ##################################################
-GOOGLE_API_KEY = "AIzaSyDEpAVpDeJ4nHcEk8nkqN3MHpahM0VDcn4"
+GOOGLE_API_KEY = "AIzaSyD..."
 GOOGLE_SEARCH_CX = "3099754d9b7fb4d0f"
 openai.api_key = os.getenv("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY")
 
@@ -37,6 +37,7 @@ def browse_internet(search_query: str) -> str:
             timeout=10,
         )
         if response.status_code != 200:
+            # Return an error message (still 200 in final response)
             return f"Google API error: {response.status_code} {response.text}"
 
         data = response.json()
@@ -44,11 +45,14 @@ def browse_internet(search_query: str) -> str:
         if not items:
             return "No search results found."
 
+        # Format a short summary of the top 3 results
         snippets = []
         for i, item in enumerate(items[:3], start=1):
             title = item.get("title", "")
+            link = item.get("link", "")
             snippet = item.get("snippet", "")
-            # We'll skip links entirely, per your instructions
+            # Keep in mind your prompt says "Do NOT include links in your response."
+            # So we won't show them, just the snippet.
             snippets.append(f"Result {i}: {title}\nSnippet: {snippet}")
 
         return "\n\n".join(snippets)
@@ -62,17 +66,21 @@ def browse_internet(search_query: str) -> str:
 def answer():
     question = request.args.get('question', '').strip()
 
-    # Always return 200 so StreamElements doesn't say "Unable to make request"
+    # Because StreamElements only shows output if the status is 200,
+    # we'll ALWAYS return 200, even if the user didn't provide a question.
+    # We'll just return some message in plain text.
     if not question:
         return Response(
             "No question provided. Usage: ?question=Your+Message+Here",
-            200,
+            200,  # 200 so StreamElements displays it
             mimetype="text/plain; charset=utf-8"
         )
 
+    # Keep the last 4 messages (2 user–assistant turns)
     global CONVERSATION_HISTORY
     CONVERSATION_HISTORY = CONVERSATION_HISTORY[-4:]
 
+    # Developer/system message
     dev_message = {
         "role": "developer",
         "content": (
@@ -84,10 +92,12 @@ def answer():
         )
     }
 
+    # Build the messages array
     messages = [dev_message] + CONVERSATION_HISTORY + [
         {"role": "user", "content": question}
     ]
 
+    # Define the single "browse_internet" tool
     tools = [
         {
             "type": "function",
@@ -103,12 +113,14 @@ def answer():
                         }
                     },
                     "required": ["query"],
+                    "additionalProperties": False
                 }
             }
         }
     ]
 
     try:
+        # First call to GPT
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=messages,
@@ -119,57 +131,61 @@ def answer():
             temperature=0.7
         )
     except Exception as e:
+        # Return 200 with the error text (so StreamElements can display it)
         return Response(f"OpenAI error: {e}", 200, mimetype="text/plain; charset=utf-8")
 
     answer_message = response.choices[0].message
 
+    # Check if GPT wants to call the function
     if answer_message.tool_calls:
         tool_call = answer_message.tool_calls[0]
         if tool_call.function.name == "browse_internet":
             try:
                 args = json.loads(tool_call.function.arguments)
                 search_results = browse_internet(args["query"])
-                messages.append(answer_message)
+
+                # Insert the tool response
+                messages.append(answer_message)  # The assistant's function call
                 messages.append({
                     "role": "tool",
                     "name": "browse_internet",
                     "tool_call_id": tool_call.id,
                     "content": search_results
                 })
+
+                # Second call to GPT, now with the search results
                 try:
-                    final_resp = openai.chat.completions.create(
+                    final_response = openai.chat.completions.create(
                         model="gpt-4o-mini",
                         messages=messages,
                         max_tokens=100,
                         temperature=0.7
                     )
-                    final_answer = final_resp.choices[0].message.content
+                    final_answer = final_response.choices[0].message.content
                 except Exception as e:
                     final_answer = f"OpenAI error (2nd call): {e}"
+
             except Exception as e:
                 final_answer = f"Error parsing function arguments: {str(e)}"
         else:
             final_answer = "Tool called, but not recognized."
     else:
+        # No function call
         final_answer = answer_message.content or "No content from the model."
 
+    # Store the conversation
     CONVERSATION_HISTORY.append({"role": "user", "content": question})
     CONVERSATION_HISTORY.append({"role": "assistant", "content": final_answer})
 
+    # Truncate to 400 chars & remove certain chars for plain text
     final_answer = final_answer.strip()[:400]
     for char in ['{', '}', '"']:
         final_answer = final_answer.replace(char, '')
 
+    # Return 200 OK so StreamElements can parse it
     return Response(final_answer, 200, mimetype="text/plain; charset=utf-8")
 
 
 if __name__ == '__main__':
-    # We run on port 5000, with HTTPS (self-signed).
-    cert_path = "/etc/selfsigned/selfsigned.crt"
-    key_path = "/etc/selfsigned/selfsigned.key"
-
-    app.run(
-        host='0.0.0.0',
-        port=5000,
-        ssl_context=(cert_path, key_path)  # (certificate, key)
-    )
+    # Run on port 5000
+    app.run(host='0.0.0.0', port=5000)
