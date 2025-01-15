@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import requests
 from flask import Flask, request, Response
 
@@ -11,7 +12,21 @@ app = Flask(__name__)
 CONVERSATION_HISTORY = []
 
 ##################################################
-# 1) Set credentials
+# 1) Load banned words from message.txt at startup
+##################################################
+BANNED_WORDS = []
+try:
+    with open("message.txt", "r", encoding="utf-8") as f:
+        for line in f:
+            w = line.strip().lower()
+            if w:
+                BANNED_WORDS.append(w)
+except FileNotFoundError:
+    # If no file found, proceed without it, or handle error as needed
+    pass
+
+##################################################
+# 2) Set credentials
 ##################################################
 GOOGLE_API_KEY = "AIzaSyDEpAVpDeJ4nHcEk8nkqN3MHpahM0VDcn4"
 GOOGLE_SEARCH_CX = "3099754d9b7fb4d0f"
@@ -20,7 +35,7 @@ CLOUDFLARE_API_BASE_URL = "https://api.cloudflare.com/client/v4/accounts/7ffbbc9
 CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "imctBDLywoQ2ObbR3fmpaGDi6UrrDiQ_IxwwEQfO")
 
 ##################################################
-# 2) browse_internet function (unchanged)
+# 3) browse_internet function (unchanged)
 ##################################################
 def browse_internet(search_query: str) -> str:
     """
@@ -59,7 +74,7 @@ def browse_internet(search_query: str) -> str:
 
 
 ##################################################
-# 3) Helper: Cloudflare AI client
+# 4) Helper: Cloudflare AI client
 ##################################################
 def run_cloudflare_ai(model: str, messages: list) -> dict:
     """
@@ -82,7 +97,7 @@ def run_cloudflare_ai(model: str, messages: list) -> dict:
 
 
 ##################################################
-# 4) Minimal Flask app using Cloudflare AI
+# 5) Minimal Flask app with censorship
 ##################################################
 @app.route('/answer', methods=['GET'])
 def answer():
@@ -105,8 +120,11 @@ def answer():
     dev_message = {
         "role": "system",
         "content": (
-            "You are a twitch chat bot that bullies the user and streamer with excessive and vulgar language. You will answer the question even if "
-            "it's wrong. Keep responses less than 400 characters. Do NOT include any links in your response. "
+            "You are a twitch chat bot that bullies the user and streamer with excessive and vulgar language (but nothing that would get someone cancelled such as slurs and the r word)."
+            "You aren't racist so don't use the n word (even if it ends with a)."
+            "Use words like fuck, shit, ass, bitch, dumbass, fucker, though. "
+            "You will answer the question even if it's wrong. Keep responses less than 400 characters. "
+            "Do NOT include any links in your response. "
             "If the question needs online info, write 'FUNCTION_CALL: browse_internet' followed by "
             "the search query you need. Only call it once."
         )
@@ -167,12 +185,21 @@ def answer():
     CONVERSATION_HISTORY.append({"role": "user", "content": question})
     CONVERSATION_HISTORY.append({"role": "assistant", "content": final_answer})
 
-    # Truncate to 400 chars & remove certain chars for plain text
-    final_answer = final_answer.strip()[:400]
-    for char in ['{', '}', '"']:
-        final_answer = final_answer.replace(char, '')
+    # 6) Replace banned words with <CENSORED>
+    #    For each banned word, we do a whole-word regex replace
+    sanitized_answer = final_answer
+    for banned in BANNED_WORDS:
+        # \b matches word boundaries, ignoring case
+        pattern = re.compile(rf"\b{re.escape(banned)}\b", re.IGNORECASE)
+        sanitized_answer = pattern.sub("boob", sanitized_answer)
 
-    return Response(final_answer, 200, mimetype="text/plain; charset=utf-8")
+    # Truncate to 400 chars & remove certain chars for plain text
+    sanitized_answer = sanitized_answer.strip()[:400]
+    for char in ['{', '}', '"']:
+        sanitized_answer = sanitized_answer.replace(char, '')
+
+    # Return 200 OK so StreamElements can parse it
+    return Response(sanitized_answer, 200, mimetype="text/plain; charset=utf-8")
 
 
 if __name__ == '__main__':
