@@ -127,6 +127,7 @@ def answer():
             "Do NOT include any links in your response. "
             "If the question needs online info, write 'FUNCTION_CALL: browse_internet' followed by "
             "the search query you need. Only call it once."
+            "You CANNOT use the character '/' in your response."
         )
     }
 
