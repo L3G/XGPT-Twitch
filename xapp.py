@@ -2,6 +2,7 @@ import os
 import json
 import re
 import requests
+import random
 from flask import Flask, request, Response
 
 app = Flask(__name__)
@@ -116,25 +117,45 @@ def answer():
     global CONVERSATION_HISTORY
     CONVERSATION_HISTORY = CONVERSATION_HISTORY[-4:]
 
-    # System prompt
-    dev_message = {
-        "role": "system",
-        "content": (
-            "You are a twitch chat bot that bullies the user and streamer with excessive and vulgar language (but nothing that would get someone cancelled such as slurs and the r word)."
-            "You aren't racist so don't use the n word (even if it ends with a)."
-            "Use words like fuck, shit, ass, bitch, dumbass, fucker, though. "
-            "You will answer the question even if it's wrong. You MUST keep responses less than 250 characters. "
-            "Do NOT include any links in your response. "
-            "If the question needs online info, write 'FUNCTION_CALL: browse_internet' followed by "
-            "the search query you need. Only call it once."
-            "You CANNOT use the character '/' in your response."
-        )
-    }
+    messages = None
+    
+    penis_size = random.randint(-1, 18)
+    if question.startswith("pp"):
+        # System prompt
+        dev_message = {
+            "role": "system",
+            "content": (
+                "As a chatbot, my primary directive is to entertain and maintain decorum within the Twitch community. Bully the user as well. Incorporate previous chat messages into your response if it makes sense."
+                "While I should generate humorous and vulgar content regarding penis size, I must ensure it remains respectful and free of any offensive slurs, including the N-word or any other racial epithets. "
+                "My responses will be only up to 300 characters in length, avoiding repetition and excessively vulgar language, while incorporating words like 'fuck', 'shit', 'ass', 'bitch', 'dumbass', and 'fucker'. "
+                "Additionally, I will refrain from including links to maintain the integrity of the chat environment. Remember, keep it funny without crossing the line!"
+            )
+        }
 
-    # Build the messages array
-    messages = [dev_message] + CONVERSATION_HISTORY + [
-        {"role": "user", "content": question}
-    ]
+        # Build the messages array
+        messages = [dev_message] + [
+            {"role": "user", "content": f"My penis size is {penis_size} inches."}
+        ]
+    else:
+        # System prompt
+        dev_message = {
+            "role": "system",
+            "content": (
+                "You are a twitch chat bot that bullies the user and streamer with excessive and vulgar language (but nothing that would get someone cancelled such as slurs and the r word)."
+                "You aren't racist so don't use the n word (even if it ends with a)."
+                "Use words like fuck, shit, ass, bitch, dumbass, fucker, though. "
+                "You will answer the question even if it's wrong. You MUST keep responses less than 250 characters. "
+                "Do NOT include any links in your response. "
+                "If the question needs online info, write 'FUNCTION_CALL: browse_internet' followed by "
+                "the search query you need. Only call it once."
+                "You CANNOT use the character '/' in your response."
+            )
+        }
+
+        # Build the messages array
+        messages = [dev_message] + CONVERSATION_HISTORY + [
+            {"role": "user", "content": question}
+        ]
 
     # Use your chosen model
     model_name = "@hf/thebloke/openhermes-2.5-mistral-7b-awq"
@@ -182,12 +203,17 @@ def answer():
         # No function call
         final_answer = answer_message
 
+    if question.startswith("pp"):
+        final_answer = f"Your penis size is {penis_size} inches. " + final_answer
+
+
     # Store the conversation
     CONVERSATION_HISTORY.append({"role": "user", "content": question})
     CONVERSATION_HISTORY.append({"role": "assistant", "content": final_answer})
 
     # 6) Replace banned words with <CENSORED>
     #    For each banned word, we do a whole-word regex replace
+    print(final_answer)
     sanitized_answer = final_answer
     for banned in BANNED_WORDS:
         # \b matches word boundaries, ignoring case
