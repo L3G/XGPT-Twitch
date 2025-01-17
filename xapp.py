@@ -77,17 +77,24 @@ def browse_internet(search_query: str) -> str:
 ##################################################
 # 4) Helper: Cloudflare AI client
 ##################################################
-def run_cloudflare_ai(model: str, messages: list) -> dict:
+def run_cloudflare_ai(model: str, messages: list, params: dict = None) -> dict:
     """
     Calls the Cloudflare AI REST API with a given model and messages array.
+    Optional `params` can include fields like temperature, top_p, top_k, etc.
     Returns the parsed JSON response as a dict.
     """
+    if params is None:
+        params = {}
+
     headers = {
         "Authorization": f"Bearer {CLOUDFLARE_API_TOKEN}"
     }
-    # Workers AI supports passing chat messages as JSON:
+
+    # Build the payload: by default, just your messages
+    # Then add in any extra parameters from `params`
     payload = {
-        "messages": messages
+        "messages": messages,
+        **params
     }
 
     url = f"{CLOUDFLARE_API_BASE_URL}/{model}"
@@ -95,6 +102,7 @@ def run_cloudflare_ai(model: str, messages: list) -> dict:
     resp.raise_for_status()  # Raises on 4xx/5xx errors
 
     return resp.json()  # Should have keys: result, success, errors, messages
+
 
 
 ##################################################
@@ -136,6 +144,17 @@ def answer():
         messages = [dev_message] + [
             {"role": "user", "content": f"My penis size is {penis_size} inches."}
         ]
+
+        # Add 'creative' parameters here so it’s less repetitive and more varied.
+        cf_params = {
+            "temperature": 1.0,          # Increase randomness
+            "top_p": 0.6,                # Broaden sampling
+            "top_k": 50,                 # Top-k sampling from more candidates
+            "frequency_penalty": 1.2,    # Penalize repeated phrases
+            "presence_penalty": 0.9,     # Encourage new topics
+            "max_tokens": 200            # Just an example
+        }
+
     else:
         # System prompt
         dev_message = {
@@ -157,12 +176,15 @@ def answer():
             {"role": "user", "content": question}
         ]
 
+        # For normal questions, we either omit parameters or keep them minimal
+        cf_params = {}
+
     # Use your chosen model
     model_name = "@hf/thebloke/openhermes-2.5-mistral-7b-awq"
 
     try:
-        # First call to Cloudflare AI
-        cf_response = run_cloudflare_ai(model_name, messages)
+        # Pass any relevant parameters to run_cloudflare_ai
+        cf_response = run_cloudflare_ai(model_name, messages, cf_params)
     except Exception as e:
         return Response(f"Cloudflare AI error: {e}", 200, mimetype="text/plain; charset=utf-8")
 
@@ -193,7 +215,7 @@ def answer():
 
             # Second call to Cloudflare AI with the new messages
             try:
-                final_cf_response = run_cloudflare_ai(model_name, messages)
+                final_cf_response = run_cloudflare_ai(model_name, messages, cf_params)
                 final_answer = final_cf_response["result"]["response"]
             except Exception as e:
                 final_answer = f"Cloudflare AI error (2nd call): {e}"
@@ -206,14 +228,11 @@ def answer():
     if question.startswith("pp"):
         final_answer = f"Your penis size is {penis_size} inches. " + final_answer
 
-
     # Store the conversation
     CONVERSATION_HISTORY.append({"role": "user", "content": question})
     CONVERSATION_HISTORY.append({"role": "assistant", "content": final_answer})
 
-    # 6) Replace banned words with <CENSORED>
-    #    For each banned word, we do a whole-word regex replace
-    print(final_answer)
+    # Banned-word censorship
     sanitized_answer = final_answer
     for banned in BANNED_WORDS:
         # \b matches word boundaries, ignoring case
@@ -227,6 +246,7 @@ def answer():
 
     # Return 200 OK so StreamElements can parse it
     return Response(sanitized_answer, 200, mimetype="text/plain; charset=utf-8")
+
 
 
 if __name__ == '__main__':
