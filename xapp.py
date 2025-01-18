@@ -141,7 +141,7 @@ def answer():
         }
 
         # Build the messages array
-        messages = [dev_message] + [
+        messages = [dev_message] + CONVERSATION_HISTORY + [
             {"role": "user", "content": f"My penis size is {penis_size} inches."}
         ]
 
