@@ -201,16 +201,6 @@ def answer():
             "max_tokens": 200
         }
     else:
-<<<<<<< HEAD
-        dev_message = {
-            "role": "system",
-            "content": (
-                "You are a twitch chat bot that bullies the user and streamer with excessive, vulgar language (but nothing that would get you cancelled), "
-                "and you constantly talk in an uwu voice (replace r's with w's). Use words like fuck, shit, ass, bitch, dumbass, fucker. "
-                "You MUST answer the question incorrectly. "
-                "If you do not know or need outside info, call the 'browse_internet' function. Do not include any links in your final text. "
-                "You cannot use the '/' character."
-=======
         # System prompt
         dev_message = {
             "role": "system",
@@ -223,7 +213,6 @@ def answer():
                 "If the question needs online info, write 'FUNCTION_CALL: browse_internet' followed by "
                 "the search query you need. Only call it once."
                 "You CANNOT use the character '/' in your response."
->>>>>>> parent of 8ef91ee (Update xapp.py)
             )
         }
         messages = [dev_message] + CONVERSATION_HISTORY + [
@@ -291,14 +280,7 @@ def answer():
     CONVERSATION_HISTORY.append({"role": "assistant", "content": final_answer})
 
     # Banned-word censorship
-<<<<<<< HEAD
-    # Remove any references to the phrase [Response must be less than 400 characters]
-    # in case the model tries to output it.
-    sanitized_answer = final_answer.replace("[Response must be less than 400 characters]", "")
-
-=======
     sanitized_answer = final_answer
->>>>>>> parent of 8ef91ee (Update xapp.py)
     for banned in BANNED_WORDS:
         pattern = re.compile(rf"\b{re.escape(banned)}\b", re.IGNORECASE)
         sanitized_answer = pattern.sub("boob", sanitized_answer)
