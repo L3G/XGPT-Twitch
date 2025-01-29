@@ -151,7 +151,7 @@ def answer():
             "top_p": 0.6,                # Broaden sampling
             "frequency_penalty": 1.2,    # Penalize repeated phrases
             "presence_penalty": 0.9,     # Encourage new topics
-            "max_tokens": 200            # Limit output
+            "max_tokens": 400            # Limit output
         }
 
     else:
