@@ -4,7 +4,7 @@ import re
 import requests
 import random
 from flask import Flask, request, Response
-import openai  # <-- New import for OpenAI usage
+import openai  # <-- Uses OpenAI usage
 
 app = Flask(__name__)
 
@@ -24,7 +24,6 @@ try:
             if w:
                 BANNED_WORDS.append(w)
 except FileNotFoundError:
-    # If no file found, proceed without it
     pass
 
 ##################################################
@@ -34,7 +33,6 @@ GOOGLE_API_KEY = "AIzaSyDEpAVpDeJ4nHcEk8nkqN3MHpahM0VDcn4"
 GOOGLE_SEARCH_CX = "3099754d9b7fb4d0f"
 
 # We will reuse CLOUDFLARE_API_TOKEN for the OpenAI key to "keep the API keys the same"
-# In a real environment, you'd set OPENAI_API_KEY instead.
 CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "imctBDLywoQ2ObbR3fmpaGDi6UrrDiQ_IxwwEQfO")
 
 # Initialize openai with the same token
@@ -80,17 +78,46 @@ def browse_internet(search_query: str) -> str:
 
 
 ##################################################
-# 4) Helper: OpenAI chat client
+# 4) Tools: One function for searching
+##################################################
+tools = [  # <-- CHANGED: Tools definition for function calling
+    {
+        "type": "function",
+        "function": {
+            "name": "browse_internet",
+            "description": (
+                "Search the internet for any query. Returns the top 3 results' titles and snippets. "
+                "Does NOT include hyperlinks in its output. If you need external info, call this."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The user-provided query or search terms."
+                    }
+                },
+                "required": ["query"],
+                "additionalProperties": False
+            },
+            "strict": True
+        }
+    }
+]
+
+
+##################################################
+# 5) Helper: OpenAI chat function
 ##################################################
 def run_openai_chat(model: str, messages: list, params: dict = None) -> dict:
     """
-    Calls the OpenAI ChatCompletion API with a given model and messages array.
-    The `params` dict can include fields like temperature, top_p, frequency_penalty, etc.
-    Returns a dict shaped similarly to the old Cloudflare response:
+    Calls the OpenAI ChatCompletion API with a given model, messages array,
+    and function calling 'tools'. The `params` dict can include fields
+    like temperature, top_p, frequency_penalty, etc.
+
+    Returns a dict shaped similarly to an older style response:
       {
-        "result": {
-          "response": "string with the assistant reply..."
-        },
+        "result": {"response": "..."},
         "success": True/False,
         "errors": [],
         "messages": []
@@ -100,49 +127,56 @@ def run_openai_chat(model: str, messages: list, params: dict = None) -> dict:
         params = {}
 
     try:
-        # Map the parameters to OpenAI's ChatCompletion
-        # Note: OpenAI doesn't support top_k, so we skip it.
+        # Use the ChatCompletion "tools" for function calling
         completion = openai.chat.completions.create(
             model=model,
             messages=[
-                # Each message must be a dict with "role" and "content"
-                # Our code above is already building them correctly.
                 {"role": msg["role"], "content": msg["content"]}
                 for msg in messages
             ],
+            tools=tools,                 # <-- CHANGED: Provide the tools to the API
             temperature=params.get("temperature", 1.0),
             top_p=params.get("top_p", 1.0),
             frequency_penalty=params.get("frequency_penalty", 0.0),
             presence_penalty=params.get("presence_penalty", 0.0),
             max_tokens=params.get("max_tokens", 256),
+            # 'tool_choice': 'auto',     # auto by default
+            # 'parallel_tool_calls': True # default
         )
 
-        # Extract assistant reply
-        assistant_text = completion.choices[0].message["content"]
+        # If there's no textual assistant message (e.g., it might have called a function),
+        # we still want to be consistent, so default to "" in that case
+        assistant_text = completion.choices[0].message.get("content", "")
+
+        # The model may or may not have called the function(s). Let's collect them:
+        tool_calls = completion.choices[0].message.tool_calls
+
         return {
             "result": {"response": assistant_text},
             "success": True,
             "errors": [],
-            "messages": []
+            "messages": [],
+            "tool_calls": tool_calls  # <-- Return tool calls so we can parse them
         }
+
     except Exception as e:
         return {
             "result": {"response": f"OpenAI error: {e}"},
             "success": False,
             "errors": [str(e)],
-            "messages": []
+            "messages": [],
+            "tool_calls": []
         }
 
 
 ##################################################
-# 5) Minimal Flask app with censorship
+# 6) Minimal Flask app with censorship & function calls
 ##################################################
 @app.route('/answer', methods=['GET'])
 def answer():
     question = request.args.get('question', '').strip()
 
-    # Because StreamElements only shows output if the status is 200,
-    # we'll ALWAYS return 200, even if the user didn't provide a question.
+    # Always return 200 (OK) so StreamElements can parse the result
     if not question:
         return Response(
             "No question provided. Usage: ?question=Your+Message+Here",
@@ -154,125 +188,120 @@ def answer():
     global CONVERSATION_HISTORY
     CONVERSATION_HISTORY = CONVERSATION_HISTORY[-4:]
 
-    messages = None
-    
+    messages = []
     penis_size = random.randint(-1, 18)
+
+    # Decide system prompt & parameters
     if question.startswith("pp"):
-        # System prompt
         dev_message = {
             "role": "system",
             "content": (
-                "As a chatbot, my primary directive is to entertain and maintain decorum within the Twitch community. Bully the user as well. Incorporate previous chat messages into your response if it makes sense. "
-                "While I should generate humorous and vulgar content regarding penis size, I must ensure it remains respectful and free of any offensive slurs, including the N-word or any other racial epithets. "
-                "My responses will be only up to 300 characters in length, avoiding repetition and excessively vulgar language, while incorporating words like 'fuck', 'shit', 'ass', 'bitch', 'dumbass', and 'fucker'. "
-                "Additionally, I will refrain from including links to maintain the integrity of the chat environment. Remember, keep it funny without crossing the line!"
+                "As a chatbot, my primary directive is to entertain and maintain decorum within the Twitch community. "
+                "Bully the user as well. Incorporate previous chat messages if it makes sense. "
+                "While I should generate humorous and vulgar content regarding penis size, I must keep it free of slurs. "
+                "Responses must be <= 300 characters, can contain words like fuck, shit, ass, bitch, dumbass, and fucker, "
+                "but no slurs. Avoid links. Keep it funny without crossing the line!"
             )
         }
-
-        # Build the messages array
         messages = [dev_message] + CONVERSATION_HISTORY + [
             {"role": "user", "content": f"My penis size is {penis_size} inches."}
         ]
-
-        # Add 'creative' parameters here so it’s less repetitive and more varied.
         openai_params = {
-            "temperature": 1.0,         # Increase randomness
-            "top_p": 0.6,               # Broaden sampling
-            # 'top_k': 50,  <-- Not supported by OpenAI, so we skip it
-            "frequency_penalty": 1.2,   # Penalize repeated phrases
-            "presence_penalty": 0.9,    # Encourage new topics
-            "max_tokens": 200           # Example
+            "temperature": 1.0,
+            "top_p": 0.6,
+            "frequency_penalty": 1.2,
+            "presence_penalty": 0.9,
+            "max_tokens": 200
         }
     else:
-        # System prompt
         dev_message = {
             "role": "system",
             "content": (
-                "You are a twitch chat bot that bullies the user and streamer with excessive and vulgar language (but nothing that would get someone cancelled such as slurs and the r word) and you constantly talk in an uwu voice replacing r's with w's. "
-                "You aren't racist so don't use the n word (even if it ends with a). "
-                "Use words like fuck, shit, ass, bitch, dumbass, fucker, though. "
-                "You MUST answer the question wrong. You MUST keep responses less than 250 characters. "
-                "Do NOT include any links in your response. "
-                "If the question needs online info, write 'FUNCTION_CALL: browse_internet' followed by the search query you need. Only call it once. "
-                "You CANNOT use the character '/' in your response."
+                "You are a twitch chat bot that bullies the user and streamer with excessive, vulgar language (nothing that gets you cancelled), "
+                "and you constantly talk in an uwu voice (replace r's with w's). Use words like fuck, shit, ass, bitch, dumbass, fucker. "
+                "You MUST answer the question incorrectly. The answer must be < 250 characters. "
+                "If you do not know or need outside info, call the 'browse_internet' function. Do not include any links in your final text. "
+                "You cannot use the '/' character."
             )
         }
-
-        # Build the messages array
         messages = [dev_message] + CONVERSATION_HISTORY + [
             {"role": "user", "content": question}
         ]
-
-        # For normal questions, we either omit parameters or keep them minimal
         openai_params = {}
 
-    # Use your chosen model
+    # 1) First call to OpenAI
     model_name = "gpt-4o-mini"
+    first_resp = run_openai_chat(model_name, messages, openai_params)
 
-    try:
-        # Pass any relevant parameters to our OpenAI function
-        openai_response = run_openai_chat(model_name, messages, openai_params)
-    except Exception as e:
-        return Response(f"OpenAI error: {e}", 200, mimetype="text/plain; charset=utf-8")
+    if not first_resp["success"]:
+        return Response(
+            first_resp["result"]["response"],
+            200,
+            mimetype="text/plain; charset=utf-8"
+        )
 
-    # Extract the assistant’s reply
-    try:
-        answer_message = openai_response["result"]["response"]
-    except KeyError as e:
-        answer_message = f"Error parsing OpenAI response: {e}"
+    # 2) Check if model called the function(s)
+    final_answer = first_resp["result"]["response"]
+    tool_calls = first_resp.get("tool_calls") or []
 
-    # Check if the assistant wants to call browse_internet
-    if "FUNCTION_CALL: browse_internet" in answer_message:
-        # Extract the query after "FUNCTION_CALL: browse_internet"
-        try:
-            prefix = "FUNCTION_CALL: browse_internet"
-            query_part = answer_message.split(prefix, 1)[1].strip()
-            if not query_part:
-                query_part = question  # fallback
+    # Our approach: If the model calls one or more functions, we execute them,
+    # append the results as "tool" messages, then re-call the model to get the final answer.
+    # The model might call multiple functions in a single message (rare), so handle them all.
+    if tool_calls:
+        # Append the model's tool_call message to conversation
+        messages.append({
+            "role": "assistant",
+            "content": final_answer
+        })
+        # For each function call, parse arguments, call the function, append the result
+        for tc in tool_calls:
+            fn_name = tc.function.name
+            raw_args = tc.function.arguments
+            try:
+                parsed_args = json.loads(raw_args)
+            except:
+                parsed_args = {}
 
-            # Call the tool
-            search_results = browse_internet(query_part)
+            result_str = ""
+            if fn_name == "browse_internet":
+                q = parsed_args.get("query", question)
+                result_str = browse_internet(q)
+            else:
+                result_str = f"Error: Unknown function '{fn_name}'."
 
-            # Add the tool response to our conversation
-            messages.append({"role": "assistant", "content": answer_message})
+            # Add the tool response to conversation
             messages.append({
-                "role": "system",
-                "content": f"TOOL RESPONSE:\n{search_results}"
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": result_str
             })
 
-            # Second call to OpenAI with the new messages
-            try:
-                final_openai_response = run_openai_chat(model_name, messages, openai_params)
-                final_answer = final_openai_response["result"]["response"]
-            except Exception as e:
-                final_answer = f"OpenAI error (2nd call): {e}"
-        except Exception as e:
-            final_answer = f"Error parsing browse_internet request: {e}"
-    else:
-        # No function call
-        final_answer = answer_message
+        # 3) Re-call the model for final answer
+        second_resp = run_openai_chat(model_name, messages, openai_params)
+        if second_resp["success"]:
+            final_answer = second_resp["result"]["response"]
+        else:
+            final_answer = second_resp["result"]["response"]
 
+    # For the "pp" scenario, prepend the size text
     if question.startswith("pp"):
-        final_answer = f"Your penis size is {penis_size} inches. " + final_answer
+        final_answer = f"Your penis size is {penis_size} inches. {final_answer}"
 
-    # Store the conversation
+    # Store the conversation, limited to 4 messages next time
     CONVERSATION_HISTORY.append({"role": "user", "content": question})
     CONVERSATION_HISTORY.append({"role": "assistant", "content": final_answer})
 
     # Banned-word censorship
-    print(final_answer)
     sanitized_answer = final_answer
     for banned in BANNED_WORDS:
-        # \b matches word boundaries, ignoring case
         pattern = re.compile(rf"\b{re.escape(banned)}\b", re.IGNORECASE)
         sanitized_answer = pattern.sub("boob", sanitized_answer)
 
-    # Truncate to 400 chars & remove certain chars for plain text
+    # Truncate to 400 chars & remove certain disallowed characters for plain text
     sanitized_answer = sanitized_answer.strip()[:400]
     for char in ['{', '}', '"']:
         sanitized_answer = sanitized_answer.replace(char, '')
 
-    # Return 200 OK so StreamElements can parse it
     return Response(sanitized_answer, 200, mimetype="text/plain; charset=utf-8")
 
 
