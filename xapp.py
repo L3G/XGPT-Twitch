@@ -36,7 +36,7 @@ GOOGLE_API_KEY = "AIzaSyDEpAVpDeJ4nHcEk8nkqN3MHpahM0VDcn4"
 GOOGLE_SEARCH_CX = "3099754d9b7fb4d0f"
 
 # Use the same env var as you did for Cloudflare, to keep your pipeline intact
-OPENAI_API_KEY = os.getenv("CLOUDFLARE_API_TOKEN", "imctBDLywoQ2ObbR3fmpaGDi6UrrDiQ_IxwwEQfO")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY")
 
 # Initialize the OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
