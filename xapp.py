@@ -276,7 +276,10 @@ def answer():
     CONVERSATION_HISTORY.append({"role": "assistant", "content": final_answer})
 
     # Banned-word censorship
-    sanitized_answer = final_answer
+    # Remove any references to the phrase [Response must be less than 400 characters]
+    # in case the model tries to output it.
+    sanitized_answer = final_answer.replace("[Response must be less than 400 characters]", "")
+
     for banned in BANNED_WORDS:
         pattern = re.compile(rf"\b{re.escape(banned)}\b", re.IGNORECASE)
         sanitized_answer = pattern.sub("boob", sanitized_answer)
