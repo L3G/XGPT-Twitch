@@ -36,7 +36,7 @@ GOOGLE_SEARCH_CX = "3099754d9b7fb4d0f"
 CLOUDFLARE_API_TOKEN = os.getenv("CLOUDFLARE_API_TOKEN", "imctBDLywoQ2ObbR3fmpaGDi6UrrDiQ_IxwwEQfO")
 
 # Initialize openai with the same token
-openai.api_key = CLOUDFLARE_API_TOKEN
+openai.api_key = os.getenv("OPENAI_API_KEY", "YOUR_OPENAI_API_KEY")
 
 ##################################################
 # 3) browse_internet function (unchanged)
