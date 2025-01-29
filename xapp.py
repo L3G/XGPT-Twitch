@@ -80,7 +80,7 @@ def browse_internet(search_query: str) -> str:
 ##################################################
 # 4) Tools: One function for searching
 ##################################################
-tools = [  # <-- CHANGED: Tools definition for function calling
+tools = [
     {
         "type": "function",
         "function": {
@@ -114,14 +114,6 @@ def run_openai_chat(model: str, messages: list, params: dict = None) -> dict:
     Calls the OpenAI ChatCompletion API with a given model, messages array,
     and function calling 'tools'. The `params` dict can include fields
     like temperature, top_p, frequency_penalty, etc.
-
-    Returns a dict shaped similarly to an older style response:
-      {
-        "result": {"response": "..."},
-        "success": True/False,
-        "errors": [],
-        "messages": []
-      }
     """
     if params is None:
         params = {}
@@ -134,21 +126,16 @@ def run_openai_chat(model: str, messages: list, params: dict = None) -> dict:
                 {"role": msg["role"], "content": msg["content"]}
                 for msg in messages
             ],
-            tools=tools,                 # <-- CHANGED: Provide the tools to the API
+            tools=tools,
             temperature=params.get("temperature", 1.0),
             top_p=params.get("top_p", 1.0),
             frequency_penalty=params.get("frequency_penalty", 0.0),
             presence_penalty=params.get("presence_penalty", 0.0),
             max_tokens=params.get("max_tokens", 256),
-            # 'tool_choice': 'auto',     # auto by default
-            # 'parallel_tool_calls': True # default
         )
 
-        # If there's no textual assistant message (e.g., it might have called a function),
-        # we still want to be consistent, so default to "" in that case
+        # If there's no textual assistant message, default to an empty string
         assistant_text = completion.choices[0].message.get("content", "")
-
-        # The model may or may not have called the function(s). Let's collect them:
         tool_calls = completion.choices[0].message.tool_calls
 
         return {
@@ -156,7 +143,7 @@ def run_openai_chat(model: str, messages: list, params: dict = None) -> dict:
             "success": True,
             "errors": [],
             "messages": [],
-            "tool_calls": tool_calls  # <-- Return tool calls so we can parse them
+            "tool_calls": tool_calls
         }
 
     except Exception as e:
@@ -199,8 +186,8 @@ def answer():
                 "As a chatbot, my primary directive is to entertain and maintain decorum within the Twitch community. "
                 "Bully the user as well. Incorporate previous chat messages if it makes sense. "
                 "While I should generate humorous and vulgar content regarding penis size, I must keep it free of slurs. "
-                "Responses must be <= 300 characters, can contain words like fuck, shit, ass, bitch, dumbass, and fucker, "
-                "but no slurs. Avoid links. Keep it funny without crossing the line!"
+                "Use words like fuck, shit, ass, bitch, dumbass, and fucker. "
+                "Avoid links. Keep it funny without crossing the line!"
             )
         }
         messages = [dev_message] + CONVERSATION_HISTORY + [
@@ -217,9 +204,9 @@ def answer():
         dev_message = {
             "role": "system",
             "content": (
-                "You are a twitch chat bot that bullies the user and streamer with excessive, vulgar language (nothing that gets you cancelled), "
+                "You are a twitch chat bot that bullies the user and streamer with excessive, vulgar language (but nothing that would get you cancelled), "
                 "and you constantly talk in an uwu voice (replace r's with w's). Use words like fuck, shit, ass, bitch, dumbass, fucker. "
-                "You MUST answer the question incorrectly. The answer must be < 250 characters. "
+                "You MUST answer the question incorrectly. "
                 "If you do not know or need outside info, call the 'browse_internet' function. Do not include any links in your final text. "
                 "You cannot use the '/' character."
             )
@@ -244,9 +231,6 @@ def answer():
     final_answer = first_resp["result"]["response"]
     tool_calls = first_resp.get("tool_calls") or []
 
-    # Our approach: If the model calls one or more functions, we execute them,
-    # append the results as "tool" messages, then re-call the model to get the final answer.
-    # The model might call multiple functions in a single message (rare), so handle them all.
     if tool_calls:
         # Append the model's tool_call message to conversation
         messages.append({
@@ -287,7 +271,7 @@ def answer():
     if question.startswith("pp"):
         final_answer = f"Your penis size is {penis_size} inches. {final_answer}"
 
-    # Store the conversation, limited to 4 messages next time
+    # Store the conversation
     CONVERSATION_HISTORY.append({"role": "user", "content": question})
     CONVERSATION_HISTORY.append({"role": "assistant", "content": final_answer})
 
@@ -297,7 +281,7 @@ def answer():
         pattern = re.compile(rf"\b{re.escape(banned)}\b", re.IGNORECASE)
         sanitized_answer = pattern.sub("boob", sanitized_answer)
 
-    # Truncate to 400 chars & remove certain disallowed characters for plain text
+    # Finally, truncate to 400 chars & remove some disallowed characters
     sanitized_answer = sanitized_answer.strip()[:400]
     for char in ['{', '}', '"']:
         sanitized_answer = sanitized_answer.replace(char, '')
