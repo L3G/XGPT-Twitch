@@ -125,8 +125,27 @@ def answer():
     cf_params = {}
 
     penis_size = random.randint(-1, 18)
-    if question.startswith("pp"):
-        # System prompt
+
+    # Check if first word is "l8rbabe"
+    if question.split()[0].lower() == "l8rbabe":
+        # Remove the first word from the question
+        parts = question.split(maxsplit=1)
+        question = parts[1] if len(parts) > 1 else ""
+        # New system prompt for l8rbabe mode
+        dev_message = {
+            "role": "system",
+            "content": (
+                "You are now in l8rbabe mode. You are a highly intellectual and witty chatbot. "
+                "Provide responses that are insightful, humorous, and use modern slang. You can also use words like fuck, bitch, ass, shit, etc.. "
+                "Keep your answers concise yet informative."
+            )
+        }
+        messages = [dev_message] + CONVERSATION_HISTORY + [
+            {"role": "user", "content": question}
+        ]
+        cf_params = {}
+    elif question.startswith("pp"):
+        # System prompt for "pp" mode
         dev_message = {
             "role": "system",
             "content": (
@@ -153,13 +172,12 @@ def answer():
             "presence_penalty": 0.9,     # Encourage new topics
             "max_tokens": 400            # Limit output
         }
-
     else:
-        # System prompt
+        # Default system prompt
         dev_message = {
             "role": "system",
             "content": (
-                "You are a chatbot named Nightbot or Kira's 13th Reason, that bullies the user and streamer with excessive and vulgar language "
+                "You are a chatbot named Nightbot, that bullies the user and streamer with excessive and vulgar language "
                 "(but nothing that would get someone cancelled such as slurs and the r word) and you constantly talk "
                 "with zoomer speech and you replace r's with w's. You aren't racist so don't use the n word (even if it ends "
                 "with a). Use words like fuck, shit, ass, bitch, dumbass, fucker, though. "
