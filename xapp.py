@@ -246,9 +246,8 @@ def answer():
         pattern = re.compile(rf"\b{re.escape(banned)}\b", re.IGNORECASE)
         sanitized_answer = pattern.sub("boob", sanitized_answer)
 
-    # (User requested to ignore the 400 character limit, so remove if desired.
-    #  Here, just comment it out. You could also delete the line if you prefer.)
-    # sanitized_answer = sanitized_answer.strip()[:400]
+    # Cut off the response if it exceeds 400 characters
+    sanitized_answer = sanitized_answer.strip()[:400]
 
     # Remove certain chars for plain text
     for char in ['{', '}', '"']:
