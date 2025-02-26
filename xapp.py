@@ -44,6 +44,15 @@ MARVEL_RIVALS_BASE_URL = "https://marvelrivalsapi.com/api/v1"
 # Cache for update calls to prevent rate limiting
 UPDATE_CACHE = {}
 UPDATE_CACHE_DURATION = 30 * 60  # 30 minutes in seconds
+CACHE_FILE = "marvel_rivals_cache.json"
+
+# Load cache from file if it exists
+try:
+    if os.path.exists(CACHE_FILE):
+        with open(CACHE_FILE, "r") as f:
+            UPDATE_CACHE = json.load(f)
+except Exception as e:
+    print(f"Error loading cache file: {e}")
 
 # Rank mapping based on level
 RANKS = {
@@ -143,15 +152,54 @@ def convert_timestamp_to_date(timestamp):
         # Return a far-future date to avoid matches
         return datetime(2099, 1, 1).date()
 
+def save_update_cache():
+    """Save the update cache to file"""
+    try:
+        with open(CACHE_FILE, "w") as f:
+            json.dump(UPDATE_CACHE, f)
+    except Exception as e:
+        print(f"Error saving cache file: {e}")
+
 def should_update_player(player_id):
     """Check if we should update the player based on cache"""
     current_time = time.time()
-    last_update = UPDATE_CACHE.get(player_id, 0)
+    # Convert player_id to string for JSON compatibility
+    player_id_str = str(player_id)
+    last_update = float(UPDATE_CACHE.get(player_id_str, 0))
     
-    if current_time - last_update >= UPDATE_CACHE_DURATION:
-        UPDATE_CACHE[player_id] = current_time
+    time_since_last_update = current_time - last_update
+    should_update = time_since_last_update >= UPDATE_CACHE_DURATION
+    
+    if should_update:
+        # Update the cache timestamp
+        UPDATE_CACHE[player_id_str] = current_time
+        # Save cache to file
+        save_update_cache()
         return True
     return False
+
+def update_player_data(player_id):
+    """Update player data via API"""
+    update_headers = {
+        "accept": "application/json",
+        "X-API-Key": MARVEL_RIVALS_API_KEY
+    }
+    
+    update_url = f"{MARVEL_RIVALS_BASE_URL}/player/{player_id}/update"
+    
+    try:
+        update_response = requests.get(update_url, headers=update_headers)
+        success = update_response.status_code == 200
+        
+        if success:
+            # Record successful update in cache
+            player_id_str = str(player_id)
+            UPDATE_CACHE[player_id_str] = time.time()
+            save_update_cache()
+        
+        return success, update_response.status_code, update_response.text
+    except requests.exceptions.RequestException as e:
+        return False, 0, str(e)
 
 def get_rank_from_level(level):
     """Get rank name from level"""
@@ -334,21 +382,14 @@ def get_player_stats_today(player_id):
         "x-api-key": MARVEL_RIVALS_API_KEY
     }
     
-    # Headers specifically for the update endpoint
-    update_headers = {
-        "accept": "application/json",
-        "X-API-Key": MARVEL_RIVALS_API_KEY
-    }
-    
-    # Try to update player data if not recently updated
+    # ALWAYS attempt to update player data if it hasn't been updated in the last 30 minutes
     if should_update_player(player_id):
-        update_url = f"{MARVEL_RIVALS_BASE_URL}/player/{player_id}/update"
-        
-        try:
-            requests.get(update_url, headers=update_headers)
-        except requests.exceptions.RequestException:
-            # Continue even if update fails
-            pass
+        # Update player data
+        success, status_code, _ = update_player_data(player_id)
+        if not success:
+            print(f"Player update failed with status {status_code}")
+    else:
+        print(f"Using cached data for player {player_id}")
     
     # Initialize variables
     wins = 0
@@ -363,9 +404,10 @@ def get_player_stats_today(player_id):
     
     try:
         while True:
-            # Get match history
-            history_url = f"{MARVEL_RIVALS_BASE_URL}/player/{player_id}/match-history?season={season}&skip={skip}&game_mode=0"
+            # Get match history - COMPETITIVE GAMES ONLY (game_mode=2)
+            history_url = f"{MARVEL_RIVALS_BASE_URL}/player/{player_id}/match-history?season={season}&skip={skip}&game_mode=2"
             
+            print(f"Fetching competitive match history from: {history_url}")
             history_response = requests.get(history_url, headers=headers)
             history_response.raise_for_status()
             
@@ -400,8 +442,12 @@ def get_player_stats_today(player_id):
                         
                         # Add RR change
                         score_info = match_player.get("score_info", {})
-                        if score_info and "add_score" in score_info:
-                            total_rr_change += score_info["add_score"]
+                        if score_info and "add_score" in score_info and score_info["add_score"] is not None:
+                            try:
+                                total_rr_change += float(score_info["add_score"])
+                            except (TypeError, ValueError):
+                                # Skip invalid values
+                                print(f"Invalid add_score value: {score_info['add_score']}")
                         
                         # Check the is_win field
                         is_win_data = match_player.get("is_win", {})
@@ -427,7 +473,7 @@ def get_player_stats_today(player_id):
                 break
                 
     except requests.exceptions.RequestException as e:
-        return f"Error fetching match history: {str(e)}", 500
+        return Response(f"Error fetching match history: {str(e)}", 500, mimetype="text/plain; charset=utf-8")
     
     # Get the player's rank based on level
     rank = get_rank_from_level(current_level) if current_level else "Unknown Rank"
@@ -435,20 +481,79 @@ def get_player_stats_today(player_id):
     # Format RR change
     rr_change_str = f"+{round(total_rr_change)}" if total_rr_change >= 0 else f"{round(total_rr_change)}"
     
-    # Return the formatted plaintext response
-    today_str = today.strftime("%B %d, %Y")
-    response_text = f"Rank {rank}. They've won {wins}, lost {losses}, and have {rr_change_str} RR today."
+    # Check if player has any matches today
+    if wins == 0 and losses == 0 and total_rr_change == 0:
+        response_text = f"Rank {rank}. No competitive matches played today."
+    else:
+        # Return the formatted plaintext response
+        response_text = f"Rank {rank}. They've won {wins}, lost {losses}, and have {rr_change_str} RR today."
     
     return Response(response_text, 200, mimetype="text/plain; charset=utf-8")
+
+@app.route('/marvel-rivals/debug/<player_id>', methods=['GET'])
+def debug_player_data(player_id):
+    """Debug endpoint to see raw API data for a player"""
+    debug_info = {
+        "player_id": player_id,
+        "timestamp": datetime.now().isoformat(),
+        "competitive_history": None,
+        "all_modes_history": None
+    }
+    
+    # Headers for API requests
+    headers = {
+        "accept": "application/json",
+        "x-api-key": MARVEL_RIVALS_API_KEY
+    }
+    
+    # Check competitive mode (game_mode=2)
+    try:
+        comp_url = f"{MARVEL_RIVALS_BASE_URL}/player/{player_id}/match-history?season=2&skip=0&game_mode=2"
+        comp_response = requests.get(comp_url, headers=headers)
+        if comp_response.status_code == 200:
+            debug_info["competitive_history"] = comp_response.json()
+    except Exception as e:
+        debug_info["competitive_error"] = str(e)
+    
+    # Check all modes (game_mode=0)
+    try:
+        all_url = f"{MARVEL_RIVALS_BASE_URL}/player/{player_id}/match-history?season=2&skip=0&game_mode=0"
+        all_response = requests.get(all_url, headers=headers)
+        if all_response.status_code == 200:
+            debug_info["all_modes_history"] = all_response.json()
+    except Exception as e:
+        debug_info["all_modes_error"] = str(e)
+    
+    return Response(json.dumps(debug_info, indent=2), 200, mimetype="application/json")
 
 @app.route('/marvel-rivals/player/<player_id>/clear-cache', methods=['GET'])
 def clear_player_cache(player_id):
     """Clear the update cache for a player"""
-    if player_id in UPDATE_CACHE:
-        del UPDATE_CACHE[player_id]
+    player_id_str = str(player_id)
+    if player_id_str in UPDATE_CACHE:
+        del UPDATE_CACHE[player_id_str]
+        save_update_cache()
         return Response(f"Cache cleared for player {player_id}", 200, mimetype="text/plain; charset=utf-8")
     else:
         return Response(f"No cache entry found for player {player_id}", 200, mimetype="text/plain; charset=utf-8")
+
+@app.route('/marvel-rivals/status', methods=['GET'])
+def marvel_rivals_status():
+    """Show status of the Marvel Rivals cache"""
+    cache_info = {}
+    current_time = time.time()
+    
+    for player_id, last_update in UPDATE_CACHE.items():
+        time_since = current_time - float(last_update)
+        minutes_ago = round(time_since / 60, 1)
+        next_update = round((UPDATE_CACHE_DURATION - time_since) / 60, 1)
+        
+        cache_info[player_id] = {
+            "last_update_minutes_ago": minutes_ago,
+            "next_update_in_minutes": max(0, next_update)
+        }
+    
+    return Response(json.dumps(cache_info, indent=2), 200, mimetype="application/json")
 
 ##################################################
 # Main Entry Point
