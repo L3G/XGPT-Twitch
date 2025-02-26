@@ -373,8 +373,8 @@ def get_player_stats_today(player_id):
         Plaintext response with rank, wins, losses, and RR change
     """
     # Generate random data instead of fetching from API
-    # Random rank from the available ones
-    rank_level = random.randint(1, 23)
+    # Fixed rank at Grandmaster 3
+    rank_level = 16  # Corresponds to Grandmaster 3
     rank = get_rank_from_level(rank_level)
     
     # Random wins and losses between 0-7
