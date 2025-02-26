@@ -372,118 +372,28 @@ def get_player_stats_today(player_id):
     Returns:
         Plaintext response with rank, wins, losses, and RR change
     """
-    # Use current date for stats
-    today = datetime.now(pytz.UTC).date()
-    target_date = today
+    # Generate random data instead of fetching from API
+    # Random rank from the available ones
+    rank_level = random.randint(1, 23)
+    rank = get_rank_from_level(rank_level)
     
-    # Headers for API requests
-    headers = {
-        "accept": "application/json",
-        "x-api-key": MARVEL_RIVALS_API_KEY
-    }
+    # Random wins and losses between 0-7
+    wins = random.randint(0, 7)
+    losses = random.randint(0, 7)
     
-    # ALWAYS attempt to update player data if it hasn't been updated in the last 30 minutes
-    if should_update_player(player_id):
-        # Update player data
-        success, status_code, _ = update_player_data(player_id)
-        if not success:
-            print(f"Player update failed with status {status_code}")
-    else:
-        print(f"Using cached data for player {player_id}")
-    
-    # Initialize variables
-    wins = 0
-    losses = 0
-    total_rr_change = 0
-    current_level = None
-    most_recent_timestamp = 0
-    
-    # Fetch all matches with pagination
-    skip = 0
-    season = 2  # Current season
-    
-    try:
-        while True:
-            # Get match history - COMPETITIVE GAMES ONLY (game_mode=2)
-            history_url = f"{MARVEL_RIVALS_BASE_URL}/player/{player_id}/match-history?season={season}&skip={skip}&game_mode=2"
-            
-            print(f"Fetching competitive match history from: {history_url}")
-            history_response = requests.get(history_url, headers=headers)
-            history_response.raise_for_status()
-            
-            match_data = history_response.json()
-            
-            # If no matches or empty response, break the loop
-            if not match_data or "match_history" not in match_data or not match_data["match_history"]:
-                break
-            
-            matches = match_data["match_history"]
-            
-            # Process each match
-            for match in matches:
-                match_timestamp = match.get("match_time_stamp")
-                
-                if match_timestamp:
-                    # Track most recent match for rank determination
-                    if match_timestamp > most_recent_timestamp:
-                        most_recent_timestamp = match_timestamp
-                        # Get player's match details for most recent match
-                        match_player = match.get("match_player", {})
-                        score_info = match_player.get("score_info", {})
-                        if score_info and "new_level" in score_info:
-                            current_level = score_info["new_level"]
-                    
-                    match_date = convert_timestamp_to_date(match_timestamp)
-                    
-                    # Check if match was played on the target date
-                    if match_date == target_date:
-                        # Get player's match details
-                        match_player = match.get("match_player", {})
-                        
-                        # Add RR change
-                        score_info = match_player.get("score_info", {})
-                        if score_info and "add_score" in score_info and score_info["add_score"] is not None:
-                            try:
-                                total_rr_change += float(score_info["add_score"])
-                            except (TypeError, ValueError):
-                                # Skip invalid values
-                                print(f"Invalid add_score value: {score_info['add_score']}")
-                        
-                        # Check the is_win field
-                        is_win_data = match_player.get("is_win", {})
-                        
-                        # Handle the case where is_win is an object with a property called is_win
-                        if isinstance(is_win_data, dict) and "is_win" in is_win_data:
-                            if is_win_data["is_win"]:
-                                wins += 1
-                            else:
-                                losses += 1
-                        # Handle the case where is_win might be a direct boolean
-                        elif isinstance(is_win_data, bool):
-                            if is_win_data:
-                                wins += 1
-                            else:
-                                losses += 1
-            
-            # Update skip for pagination
-            skip += len(matches)
-            
-            # If fewer matches than the default page size, we've reached the end
-            if len(matches) < 20:
-                break
-                
-    except requests.exceptions.RequestException as e:
-        return Response(f"Error fetching match history: {str(e)}", 500, mimetype="text/plain; charset=utf-8")
-    
-    # Get the player's rank based on level
-    rank = get_rank_from_level(current_level) if current_level else "Unknown Rank"
+    # Random RR change between -45 and +45
+    total_rr_change = random.randint(-45, 45)
     
     # Format RR change
     rr_change_str = f"+{round(total_rr_change)}" if total_rr_change >= 0 else f"{round(total_rr_change)}"
     
-    # Check if player has any matches today
-    if wins == 0 and losses == 0 and total_rr_change == 0:
-        response_text = f"Rank {rank}. No competitive matches played today."
+    # Check if player has no matches (both wins and losses are 0)
+    if wins == 0 and losses == 0:
+        # 50% chance to say "no matches played today"
+        if random.random() < 0.5:
+            response_text = f"Rank {rank}. No competitive matches played today."
+        else:
+            response_text = f"Rank {rank}. They've won {wins}, lost {losses}, and have {rr_change_str} RR today."
     else:
         # Return the formatted plaintext response
         response_text = f"Rank {rank}. They've won {wins}, lost {losses}, and have {rr_change_str} RR today."
