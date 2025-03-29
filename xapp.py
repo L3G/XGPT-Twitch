@@ -247,6 +247,23 @@ def answer():
             {"role": "user", "content": question}
         ]
         cf_params = {}
+    elif question.split()[0].lower() == "grumpyyrose":
+        # Remove the first word from the question
+        parts = question.split(maxsplit=1)
+        question = parts[1] if len(parts) > 1 else ""
+        # New system prompt for l8rbabe mode
+        dev_message = {
+            "role": "system",
+            "content": (
+                "You are now in grumpyyrose mode. You are a highly intellectual and witty chatbot. "
+                "Provide responses that are insightful, humorous, and use modern slang. You can also use words like fuck, bitch, ass, shit, etc.. "
+                "Keep your answers concise yet informative. Answers MUST be 400 characters or less."
+            )
+        }
+        messages = [dev_message] + CONVERSATION_HISTORY + [
+            {"role": "user", "content": question}
+        ]
+        cf_params = {}
     elif question.startswith("pp"):
         # System prompt for "pp" mode
         dev_message = {
@@ -364,41 +381,80 @@ def answer():
 @app.route('/marvel-rivals/player/<player_id>/stats/today', methods=['GET'])
 def get_player_stats_today(player_id):
     """
-    Get the win/loss stats and RR change for a player for today
-    
-    Args:
-        player_id: The unique player identifier (either UID or username)
-        
-    Returns:
-        Plaintext response with rank, wins, losses, and RR change
+    Get overall win/loss stats for .Laina IGN using the new Tracker.gg API.
+    Note: Since the new API doesn't separate matches by day, this returns overall stats.
     """
-    # Generate random data instead of fetching from API
-    # Fixed rank at Grandmaster 3
-    rank_level = 16  # Corresponds to Grandmaster 3
-    rank = get_rank_from_level(rank_level)
+    new_api_url = "https://api.tracker.gg/api/v2/marvel-rivals/standard/profile/ign/.Laina"
     
-    # Random wins and losses between 0-7
-    wins = random.randint(0, 7)
-    losses = random.randint(0, 7)
+    # Headers mimicking your browser request
+    headers = {
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "en-US,en;q=0.9",
+        "cache-control": "max-age=0",
+        "if-modified-since": "Sat, 01 Mar 2025 03:22:20 GMT",
+        "upgrade-insecure-requests": "1",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edg/133.0.0.0",
+        "sec-ch-ua": "\"Not(A:Brand\";v=\"99\", \"Microsoft Edge\";v=\"133\", \"Chromium\";v=\"133\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\""
+        # Optionally, you can include cookies if required by uncommenting the next line:
+        # "cookie": "YOUR_COOKIE_STRING_HERE"
+    }
     
-    # Random RR change between -45 and +45
-    total_rr_change = random.randint(-45, 45)
-    
-    # Format RR change
-    rr_change_str = f"+{round(total_rr_change)}" if total_rr_change >= 0 else f"{round(total_rr_change)}"
-    
-    # Check if player has no matches (both wins and losses are 0)
-    if wins == 0 and losses == 0:
-        # 50% chance to say "no matches played today"
-        if random.random() < 0.5:
-            response_text = f"Rank {rank}. No competitive matches played today."
+    try:
+        new_response = requests.get(new_api_url, headers=headers, timeout=10)
+        if new_response.status_code != 200:
+            return Response(
+                f"Error fetching data: {new_response.status_code}",
+                new_response.status_code,
+                mimetype="text/plain; charset=utf-8"
+            )
+        
+        # Check content type: if JSON, use it directly; else, try to extract JSON from a <pre> block.
+        content_type = new_response.headers.get("Content-Type", "")
+        if "application/json" in content_type:
+            api_data = new_response.json()
         else:
-            response_text = f"Rank {rank}. They've won {wins}, lost {losses}, and have {rr_change_str} RR today."
-    else:
-        # Return the formatted plaintext response
-        response_text = f"Rank {rank}. They've won {wins}, lost {losses}, and have {rr_change_str} RR today."
+            match = re.search(r'<pre>(.*)</pre>', new_response.text, re.DOTALL)
+            if not match:
+                return Response("Error parsing API response", 500, mimetype="text/plain; charset=utf-8")
+            json_str = match.group(1)
+            api_data = json.loads(json_str)
+    except Exception as e:
+        return Response(f"Error fetching or parsing API data: {str(e)}",
+                        500, mimetype="text/plain; charset=utf-8")
     
-    return Response(response_text, 200, mimetype="text/plain; charset=utf-8")
+    try:
+        # Get the level and compute the rank (using the existing mapping)
+        level = api_data["data"]["metadata"]["level"]
+        rank = get_rank_from_level(level)
+        
+        # Look for the segment with overall stats (metadata name "All")
+        segments = api_data["data"].get("segments", [])
+        segment = next((s for s in segments if s.get("metadata", {}).get("name") == "All"), None)
+        if segment is None and segments:
+            segment = segments[0]
+        if segment is None:
+            return Response("No stats segment found.", 404, mimetype="text/plain; charset=utf-8")
+        
+        stats = segment.get("stats", {})
+        matches_played = stats.get("matchesPlayed", {}).get("value", 0)
+        matches_won = stats.get("matchesWon", {}).get("value", 0)
+        matches_lost = matches_played - matches_won
+        
+        if matches_played == 0:
+            response_text = f"Rank {rank}. No competitive matches played."
+        else:
+            response_text = (f"Rank {rank}. They've won {matches_won}, lost {matches_lost} "
+                             f"(out of {matches_played} matches).")
+        
+        return Response(response_text, 200, mimetype="text/plain; charset=utf-8")
+    except Exception as e:
+        return Response(f"Error processing player data: {str(e)}",
+                        500, mimetype="text/plain; charset=utf-8")
+
+
 
 @app.route('/marvel-rivals/debug/<player_id>', methods=['GET'])
 def debug_player_data(player_id):
@@ -418,7 +474,7 @@ def debug_player_data(player_id):
     
     # Check competitive mode (game_mode=2)
     try:
-        comp_url = f"{MARVEL_RIVALS_BASE_URL}/player/{player_id}/match-history?season=2&skip=0&game_mode=2"
+        comp_url = f"{MARVEL_RIVALS_BASE_URL}/player/{player_id}/match-history?season=1.5&skip=0&game_mode=2"
         comp_response = requests.get(comp_url, headers=headers)
         if comp_response.status_code == 200:
             debug_info["competitive_history"] = comp_response.json()
@@ -427,7 +483,7 @@ def debug_player_data(player_id):
     
     # Check all modes (game_mode=0)
     try:
-        all_url = f"{MARVEL_RIVALS_BASE_URL}/player/{player_id}/match-history?season=2&skip=0&game_mode=0"
+        all_url = f"{MARVEL_RIVALS_BASE_URL}/player/{player_id}/match-history?season=1.5&skip=0&game_mode=0"
         all_response = requests.get(all_url, headers=headers)
         if all_response.status_code == 200:
             debug_info["all_modes_history"] = all_response.json()
