@@ -251,6 +251,7 @@ def answer():
         # Remove the first word from the question
         parts = question.split(maxsplit=1)
         question = parts[1] if len(parts) > 1 else ""
+        question = question + " Keep your answer less than 400 characters long."
         # New system prompt for l8rbabe mode
         dev_message = {
             "role": "system",
@@ -269,7 +270,7 @@ def answer():
         dev_message = {
             "role": "system",
             "content": (
-                "As a chatbot named Nightbot or Kira's 13th Reason, my primary directive is to entertain and maintain decorum within the Twitch community. "
+                "As a chatbot named Nightbot, my primary directive is to entertain and maintain decorum within the Twitch community. "
                 "Bully the user as well. Incorporate previous chat messages into your response if it makes sense. "
                 "While I should generate humorous and vulgar content regarding penis size, I must ensure it remains "
                 "respectful and free of any offensive slurs, including the N-word or any other racial epithets. "
