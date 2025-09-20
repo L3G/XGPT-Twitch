@@ -140,6 +140,33 @@ def run_openai_chat(model: str, messages: list, params: dict = None) -> str:
     # Get the content of the first choice
     return response.choices[0].message.content
 
+def smart_trim(text: str, limit: int) -> str:
+    """
+    Trim text to the specified character limit without cutting off mid-sentence
+    where possible. Preference order:
+    1) Last sentence terminator (. ! ? …) within limit
+    2) Last whitespace within limit
+    3) Hard cut at limit (fallback)
+    """
+    text = text.strip()
+    if len(text) <= limit:
+        return text
+
+    snippet = text[:limit]
+    # Try sentence terminators
+    terminators = ['.', '!', '?', '…']
+    last_term = max(snippet.rfind(t) for t in terminators)
+    if last_term >= 0:
+        return snippet[: last_term + 1].strip()
+
+    # Try last whitespace
+    last_space = snippet.rfind(' ')
+    if last_space >= 0:
+        return snippet[: last_space].rstrip()
+
+    # Fallback: hard cut
+    return snippet.rstrip()
+
 ##################################################
 # Marvel Rivals Helper Functions
 ##################################################
@@ -226,6 +253,7 @@ def answer():
     # Decide how to construct the messages + params based on the query
     messages = None
     cf_params = {}
+    mode = None  # Track which mode is active
 
     penis_size = random.randint(-1, 18)
 
@@ -247,6 +275,7 @@ def answer():
             {"role": "user", "content": question}
         ]
         cf_params = {}
+        mode = "l8rbabe"
     elif question.split()[0].lower() == "grumpyyrose":
         # Remove the first word from the question
         parts = question.split(maxsplit=1)
@@ -258,13 +287,15 @@ def answer():
             "content": (
                 "You are now in grumpyyrose mode. You are a highly intellectual and witty chatbot. "
                 "Provide responses that are insightful, humorous, and use modern slang. You can also use words like fuck, bitch, ass, shit, etc.. However, if the user wants to talk about movies or old shows, make fun of them and bully them."
-                "Keep your answers concise yet informative. Answers MUST be 400 characters or less."
+                "Keep your answers concise yet informative. Answers MUST be 400 characters or less. "
+                "Always end with a complete sentence. If you are close to the character limit, wrap up and conclude instead of stopping mid-sentence."
             )
         }
         messages = [dev_message] + CONVERSATION_HISTORY + [
             {"role": "user", "content": question}
         ]
         cf_params = {}
+        mode = "grumpyyrose"
     elif question.startswith("pp"):
         # System prompt for "pp" mode
         dev_message = {
@@ -367,8 +398,12 @@ def answer():
         pattern = re.compile(rf"\b{re.escape(banned)}\b", re.IGNORECASE)
         sanitized_answer = pattern.sub("boob", sanitized_answer)
 
-    # Cut off the response if it exceeds 400 characters
-    sanitized_answer = sanitized_answer.strip()[:400]
+    # Trim the response while trying not to cut off mid-sentence for grumpyyrose
+    if mode == "grumpyyrose":
+        sanitized_answer = smart_trim(sanitized_answer, 400)
+    else:
+        # Existing hard cut behavior for other modes
+        sanitized_answer = sanitized_answer.strip()[:400]
 
     # Remove certain chars for plain text
     for char in ['{', '}', '"']:
