@@ -235,7 +235,7 @@ def get_rank_from_level(level):
 ##################################################
 # Chatbot API Routes
 ##################################################
-@app.route('/answer', methods=['GET'])
+@app.route('/xgpt', methods=['GET'])
 def answer():
     question = request.args.get('question', '').strip()
 
@@ -276,7 +276,7 @@ def answer():
         ]
         cf_params = {}
         mode = "l8rbabe"
-    elif question.split()[0].lower() == "grumpyyrose":
+    elif question.split()[0].lower() == "kodiekola":
         # Remove the first word from the question
         parts = question.split(maxsplit=1)
         question = parts[1] if len(parts) > 1 else ""
@@ -285,7 +285,7 @@ def answer():
         dev_message = {
             "role": "system",
             "content": (
-                "You are now in grumpyyrose mode. You are a highly intellectual and witty chatbot. "
+                "You are now in kodiekola mode. You are a highly intellectual and witty chatbot. "
                 "Provide responses that are insightful, humorous, and use modern slang. You can also use words like fuck, bitch, ass, shit, etc.. However, if the user wants to talk about movies or old shows, make fun of them and bully them."
                 "Keep your answers concise yet informative. Answers MUST be 400 characters or less. "
                 "Always end with a complete sentence. If you are close to the character limit, wrap up and conclude instead of stopping mid-sentence."
@@ -295,7 +295,7 @@ def answer():
             {"role": "user", "content": question}
         ]
         cf_params = {}
-        mode = "grumpyyrose"
+        mode = "kodiekola"
     elif question.startswith("pp"):
         # System prompt for "pp" mode
         dev_message = {
@@ -398,8 +398,8 @@ def answer():
         pattern = re.compile(rf"\b{re.escape(banned)}\b", re.IGNORECASE)
         sanitized_answer = pattern.sub("boob", sanitized_answer)
 
-    # Trim the response while trying not to cut off mid-sentence for grumpyyrose
-    if mode == "grumpyyrose":
+    # Trim the response while trying not to cut off mid-sentence for kodiekola
+    if mode == "kodiekola":
         sanitized_answer = smart_trim(sanitized_answer, 400)
     else:
         # Existing hard cut behavior for other modes
